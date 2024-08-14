@@ -10,6 +10,14 @@
 
 A Go implementation of Agenix.
 
+## Motivation
+
+I was bored.
+
+_Also I find Bash to be an insanely unwieldly choice for everyday tools. A 210~
+LoC script should not be handling the entirety of my secrets management... No
+shade, just personal preference._
+
 ## Goals & Non-goals
 
 In the order that they are given.
@@ -37,5 +45,8 @@ In the order that they are given.
 
 ## License
 
-GPL3. Credits for design and implementation ideas go to @ryantm for the creation
-of Agenix.
+bgenix is licensed under [GPL3](LICENSE).
+
+Credits for design and implementation ideas go to
+[@ryantm](https://github.com/ryantm) for the creation of
+[agenix](https://github.com/ryantm/agenix).

@@ -24,6 +24,12 @@ func Execute() {
 		case "-h", "--help":
 			help.ShowHelp()
 			os.Exit(0)
+
+		// -e or --edit takes a file as an argument
+		// and decrypts the file to be edited with
+		// $EDITOR or cat. After editing, the file
+		// is re-encrypted with the private key
+		// and put back in place.
 		case "-e", "--edit":
 			args = args[1:]
 			if len(args) == 0 {
@@ -32,6 +38,10 @@ func Execute() {
 			}
 			fileToEdit = args[0]
 			args = args[1:]
+
+		// -i or --identity takes a private key as an argument
+		// and uses it to decrypt the file. Only to be used
+		// with other flags.
 		case "-i", "--identity":
 			args = args[1:]
 			if len(args) == 0 {
@@ -40,9 +50,15 @@ func Execute() {
 			}
 			privateKeyPath = args[0]
 			args = args[1:]
+
+		// Rekey takes no arguments and rekeys the files
+		// specified in the rules file.
 		case "-r", "--rekey":
 			rekey = true
 			args = args[1:]
+
+		// -d or --decrypt takes a file as an argument
+		// and decrypts it using the given private key.
 		case "-d", "--decrypt":
 			decryptOnly = true
 			args = args[1:]
@@ -52,6 +68,8 @@ func Execute() {
 			}
 			fileToEdit = args[0]
 			args = args[1:]
+
+		// No args are provided. Display the help menu and exit.
 		default:
 			help.ShowHelp()
 			os.Exit(1)

@@ -39,7 +39,6 @@ In the order that they are given.
 
 - Better configuration management
 - Properly implement `-r`/`--rekey`
-- Try using Age as a Go library instead of the Age binary
 - Flake-parts support (?)
   - See agenix-rekey
 

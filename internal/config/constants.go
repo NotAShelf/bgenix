@@ -5,10 +5,11 @@ const (
 	// but this is not production code so, suck my ass
 	DefaultRulesFile = "./secrets.nix"
 	PackageName      = "@pname@"
-	AgeBinary        = "@ageBin@"
+	Version          = "@version@"
 	NixInstantiate   = "@nixInstantiate@"
 	JqBinary         = "@jqBin@"
 	MktempBinary     = "@mktempBin@"
 	DiffBinary       = "@diffBin@"
-	Version          = "@version@"
+	AgeBinary        = "@ageBin@"
+	AgeVersion       = "@ageVersion@"
 )

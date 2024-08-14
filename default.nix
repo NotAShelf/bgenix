@@ -7,8 +7,6 @@
   mktemp,
   diffutils,
   buildGoModule,
-  # Overridables
-  ageBin ? "${age}/bin/age",
 }: let
   pname = "bgenix";
   version = "0.1.0";
@@ -21,7 +19,8 @@ in
     postPatch = ''
       substituteInPlace ./internal/config/constants.go \
         --replace-fail @nixInstantiate@ "${nix}/bin/nix-instantiate" \
-        --replace-fail @ageBin@ "${ageBin}" \
+        --replace-fail @ageBin@ "${age}/bin/age" \
+        --replace-fail @ageVersion@ "${age.version}" \
         --replace-fail @jqBin@ "${jq}/bin/jq" \
         --replace-fail @mktempBin@ "${mktemp}/bin/mktemp" \
         --replace-fail @diffBin@ "${diffutils}/bin/diff" \

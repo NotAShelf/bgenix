@@ -31,7 +31,7 @@ func RekeyFiles(rules string) {
 	}
 
 	for _, file := range files {
-		fmt.Printf("rekeying %s...\n", file)
+		fmt.Printf("Rekeying %s...\n", file)
 		EditFile(file, "", rules)
 	}
 }
@@ -53,8 +53,9 @@ func CopyFile(src, dst string) error {
 	return err
 }
 
-// FIXME: the file is cleared and never rewritten. We need to ensure that
-// this never happens in production.
+// TODO: agenix copies the cleartext file to cleartext.before
+// and compares the cleartext file with the cleartext.before file
+// to check if the file was modified. We should do the same.
 func EditFile(file, privateKeyPath, rules string) {
 	keys, err := GetKeysForFile(file, rules)
 	if err != nil {
@@ -62,12 +63,16 @@ func EditFile(file, privateKeyPath, rules string) {
 		os.Exit(1)
 	}
 
-	cleartextDir, err := os.MkdirTemp("", "agenix-cleartext")
+	cleartextDir, err := os.MkdirTemp("", "agenix-decrypted")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create temp dir: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to create temp directory: %v\n", err)
 		os.Exit(1)
 	}
-	defer os.RemoveAll(cleartextDir)
+	defer func() {
+		if err := os.RemoveAll(cleartextDir); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to remove temp directory: %v\n", err)
+		}
+	}()
 
 	cleartextFile := filepath.Join(cleartextDir, filepath.Base(file))
 	err = DecryptFile(file, privateKeyPath, cleartextFile, keys...)
@@ -91,15 +96,17 @@ func EditFile(file, privateKeyPath, rules string) {
 		os.Exit(1)
 	}
 
-	err = os.WriteFile(file, []byte{}, 0644)
+	// Read the edited content from the temporary file
+	editedContent, err := os.ReadFile(cleartextFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to clear original file: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to read edited content: %v\n", err)
 		os.Exit(1)
 	}
 
-	err = os.WriteFile(file, []byte{}, 0644)
+	// Re-encrypt the edited content and overwrite the original file
+	err = EncryptFile(string(editedContent), file, privateKeyPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to write edited content to original file: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to encrypt edited file: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -125,13 +132,14 @@ func DecryptFile(file, privateKeyPath, output string, keys ...string) error {
 	return nil
 }
 
-func EncryptFile(input, output string, keys ...string) error {
-	fmt.Printf("Encrypting %s to %s with keys %v\n", input, output, keys)
+func EncryptFile(input, output string, privateKeyPath string) error {
+	fmt.Printf("Encrypting %s to %s with private key %s\n", input, output, privateKeyPath)
 	args := []string{"--encrypt"}
 
-	for _, key := range keys {
-		args = append(args, "--recipient", key)
-	}
+	// Use the private key for encryption
+	// XXX: can we try using public keys? Would that make sense
+	// for secrets but not so secrets? No? Okay.
+	args = append(args, "--identity", privateKeyPath)
 
 	args = append(args, "-o", output)
 	cmd := exec.Command(AgeBinary, args...)
@@ -154,6 +162,7 @@ func GetKeysForFile(file, rules string) ([]string, error) {
 		return nil, fmt.Errorf("failed to resolve absolute path of rules file: %w", err)
 	}
 
+	// XXX: Extremely hit-or-miss.
 	cmd := exec.Command(NixInstantiate, "--json", "--eval", "--strict", "-E", fmt.Sprintf("(let rules = import %q; in rules.\"%s\".publicKeys)", absRulesPath, file))
 
 	var out bytes.Buffer

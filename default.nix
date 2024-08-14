@@ -32,5 +32,9 @@ in
 
     ldflags = ["-s" "-w"];
 
-    meta.mainProgram = "bgenix";
+    meta = {
+      description = "age-encrypted secrets for NixOS";
+      mainProgram = "bgenix";
+      maintainers = [lib.maintainers.NotAShelf];
+    };
   }

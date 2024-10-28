@@ -23,19 +23,6 @@ type Rule struct {
 	PublicKeys []string `json:"publicKeys"`
 }
 
-func RekeyFiles(rules string) {
-	files, err := GetFilesFromRules(rules)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error getting files from rules:", err)
-		os.Exit(1)
-	}
-
-	for _, file := range files {
-		fmt.Printf("Rekeying %s...\n", file)
-		EditFile(file, "", rules)
-	}
-}
-
 func CopyFile(src, dst string) error {
 	srcFile, err := os.Open(src)
 	if err != nil {
@@ -65,11 +52,7 @@ func EditFile(file, privateKeyPath, rules string) {
 		fmt.Fprintf(os.Stderr, "Failed to create temp directory: %v\n", err)
 		os.Exit(1)
 	}
-	defer func() {
-		if err := os.RemoveAll(cleartextDir); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to remove temp directory: %v\n", err)
-		}
-	}()
+	defer os.RemoveAll(cleartextDir)
 
 	cleartextFile := filepath.Join(cleartextDir, filepath.Base(file))
 	err = DecryptFile(file, privateKeyPath, cleartextFile, keys...)
@@ -78,10 +61,11 @@ func EditFile(file, privateKeyPath, rules string) {
 		os.Exit(1)
 	}
 
-	// Read the original content before editing
-	originalContent, err := os.ReadFile(cleartextFile)
+	// Create a backup of the cleartext file
+	backupFile := cleartextFile + ".before"
+	err = CopyFile(cleartextFile, backupFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read original content: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to create backup file: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -89,7 +73,6 @@ func EditFile(file, privateKeyPath, rules string) {
 	if editor == "" || !IsStdinInteractive() {
 		editor = "cat"
 	}
-
 	cmd := exec.Command(editor, cleartextFile)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -100,45 +83,98 @@ func EditFile(file, privateKeyPath, rules string) {
 		os.Exit(1)
 	}
 
-	// Read the edited content from the temporary file
-	editedContent, err := os.ReadFile(cleartextFile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read edited content: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Compare original and edited content
-	if bytes.Equal(originalContent, editedContent) {
-		fmt.Println("No changes made to the file. Skipping re-encryption.")
+	// Check if the cleartext file was created/modified
+	if _, err := os.Stat(cleartextFile); os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "Error: %s wasn't created.\n", file)
 		return
 	}
 
-	// Re-encrypt the edited content and overwrite the original file
-	err = EncryptFile(string(editedContent), file, privateKeyPath)
+	// Compare original and edited files
+	if _, err := os.Stat(backupFile); err == nil {
+		diffCmd := exec.Command("diff", "-q", backupFile, cleartextFile)
+		if err := diffCmd.Run(); err == nil {
+			fmt.Printf("Warning: %s wasn't changed, skipping re-encryption.\n", file)
+			return
+		}
+	}
+
+	// Prepare to re-encrypt the edited content
+	encryptionArgs := []string{"--encrypt"}
+	for _, key := range keys {
+		if key != "" {
+			encryptionArgs = append(encryptionArgs, "--recipient", key)
+		}
+	}
+
+	reEncryptedDir, err := os.MkdirTemp("", "agenix-reencrypted")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to encrypt edited file: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to create temp directory for re-encryption: %v\n", err)
+		os.Exit(1)
+	}
+	defer os.RemoveAll(reEncryptedDir)
+
+	reEncryptedFile := filepath.Join(reEncryptedDir, filepath.Base(file))
+	encryptionArgs = append(encryptionArgs, "-o", reEncryptedFile)
+
+	cmd = exec.Command(AgeBinary, encryptionArgs...)
+	cmd.Stdin = strings.NewReader(cleartextFile)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err = cmd.Run()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to encrypt file: %s\n", stderr.String())
+		os.Exit(1)
+	}
+
+	// Move the re-encrypted file to the original location
+	err = os.MkdirAll(filepath.Dir(file), 0755)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create directory for original file: %v\n", err)
+		os.Exit(1)
+	}
+
+	err = os.Rename(reEncryptedFile, file)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to move re-encrypted file: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Println("File successfully edited and saved.")
 }
 
+func RekeyFiles(rules string) {
+	files, err := GetFilesFromRules(rules)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error getting files from rules:", err)
+		os.Exit(1)
+	}
+	for _, file := range files {
+		fmt.Printf("Rekeying %s...\n", file)
+		EditFile(file, "", rules)
+	}
+}
+
+func cleanup() {
+	// Placeholder but not really. This lets me handle cleanup separately
+	// if I really need to.
+	fmt.Println("Cleanup completed.")
+}
+
 func DecryptFile(file, privateKeyPath, output string, keys ...string) error {
 	args := []string{"--decrypt"}
-	if privateKeyPath != "" {
-		args = append(args, "--identity", privateKeyPath)
-	}
 	args = append(args, "-o", output, file)
+
+	for _, key := range keys {
+		args = append(args, "--identity", key)
+	}
 
 	cmd := exec.Command(AgeBinary, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	err := cmd.Run()
-
 	if err != nil {
-		return fmt.Errorf("failed to decrypt file: %s", stderr.String())
+		return fmt.Errorf("failed to decrypt file: %s, stderr: %s", err, stderr.String())
 	}
-
 	return nil
 }
 
@@ -197,13 +233,25 @@ func GetKeysForFile(file, rules string) ([]string, error) {
 }
 
 func GetFilesFromRules(rules string) ([]string, error) {
-	cmd := exec.Command(NixInstantiate, "--json", "--eval", "-E", fmt.Sprintf("(let rules = import \"%q\"; in builtins.attrNames rules)", rules))
+	// Use DefaultRulesFile if rules is empty
+	if rules == "" {
+		rules = config.DefaultRulesFile
+	}
 
+	// Convert rules path to absolute paths to satisfy Nix eval
+	absRulesPath, err := filepath.Abs(rules)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve absolute path of rules file: %w", err)
+	}
+
+	cmd := exec.Command(NixInstantiate, "--json", "--eval", "-E", fmt.Sprintf("(let rules = import %q; in builtins.attrNames rules)", absRulesPath))
 	var out bytes.Buffer
 	cmd.Stdout = &out
-	err := cmd.Run()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err = cmd.Run()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get files from rules: %w", err)
+		return nil, fmt.Errorf("failed to get files from rules: %w, stderr: %s", err, stderr.String())
 	}
 
 	var files []string
@@ -212,8 +260,7 @@ func GetFilesFromRules(rules string) ([]string, error) {
 		return nil, fmt.Errorf("failed to parse files: %w", err)
 	}
 
-	fmt.Print("Files:", files)
-
+	fmt.Print("Files: ", files)
 	return files, nil
 }
 

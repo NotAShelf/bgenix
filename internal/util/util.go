@@ -53,9 +53,6 @@ func CopyFile(src, dst string) error {
 	return err
 }
 
-// TODO: agenix copies the cleartext file to cleartext.before
-// and compares the cleartext file with the cleartext.before file
-// to check if the file was modified. We should do the same.
 func EditFile(file, privateKeyPath, rules string) {
 	keys, err := GetKeysForFile(file, rules)
 	if err != nil {
@@ -96,11 +93,24 @@ func EditFile(file, privateKeyPath, rules string) {
 		os.Exit(1)
 	}
 
+	// Read the original content before editing
+	originalContent, err := os.ReadFile(cleartextFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to read original content: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Read the edited content from the temporary file
 	editedContent, err := os.ReadFile(cleartextFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to read edited content: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Compare original and edited content
+	if string(originalContent) == string(editedContent) {
+		fmt.Println("No changes made to the file. Skipping re-encryption.")
+		return
 	}
 
 	// Re-encrypt the edited content and overwrite the original file

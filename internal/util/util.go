@@ -78,6 +78,13 @@ func EditFile(file, privateKeyPath, rules string) {
 		os.Exit(1)
 	}
 
+	// Read the original content before editing
+	originalContent, err := os.ReadFile(cleartextFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to read original content: %v\n", err)
+		os.Exit(1)
+	}
+
 	editor := os.Getenv("EDITOR")
 	if editor == "" || !IsStdinInteractive() {
 		editor = "cat"
@@ -93,13 +100,6 @@ func EditFile(file, privateKeyPath, rules string) {
 		os.Exit(1)
 	}
 
-	// Read the original content before editing
-	originalContent, err := os.ReadFile(cleartextFile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read original content: %v\n", err)
-		os.Exit(1)
-	}
-
 	// Read the edited content from the temporary file
 	editedContent, err := os.ReadFile(cleartextFile)
 	if err != nil {
@@ -108,7 +108,7 @@ func EditFile(file, privateKeyPath, rules string) {
 	}
 
 	// Compare original and edited content
-	if string(originalContent) == string(editedContent) {
+	if bytes.Equal(originalContent, editedContent) {
 		fmt.Println("No changes made to the file. Skipping re-encryption.")
 		return
 	}
